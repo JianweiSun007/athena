@@ -8,8 +8,11 @@ tags
 /athena/transform/feats/ops/x_ops.so
 
 /build
+/event
 
 /dist
+nohup.out*
+/examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/event
 
 /tools/kenlm
 /tools/sph2pipe_v2.5.tar.gz
