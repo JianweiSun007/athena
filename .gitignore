@@ -13,6 +13,8 @@ tags
 /dist
 nohup.out*
 /examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/event
+/examples/asr/hkust/data/dev.csv
+/examples/asr/hkust/data/train.csv
 
 /tools/kenlm
 /tools/sph2pipe_v2.5.tar.gz
