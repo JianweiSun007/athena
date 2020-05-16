@@ -24,7 +24,7 @@ from tensorflow.keras.layers import Dense
 from .base import BaseModel
 from ..loss import CTCLoss
 from ..metrics import CTCAccuracy
-from .speech_transformer import SpeechTransformer, SpeechTransformer2
+from .speech_transformer import SpeechTransformer, SpeechTransformer2, SpeechTransformer3
 from ..utils.hparam import register_and_parse_hparams
 from ..tools.beam_search import BeamSearchDecoder
 from ..tools.ctc_scorer import CTCPrefixScorer
@@ -39,6 +39,7 @@ class MtlTransformerCtc(BaseModel):
     SUPPORTED_MODEL = {
         "speech_transformer": SpeechTransformer,
         "speech_transformer2": SpeechTransformer2,
+        "speech_transformer3": SpeechTransformer3,
     }
 
     default_config = {

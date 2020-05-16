@@ -2,10 +2,10 @@
   "batch_size":32,
   "num_epochs":50,
   "sorta_epoch":1,
-  "ckpt":"examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/",
-  "summary_dir":"examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/event",
+  "ckpt":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/",
+  "summary_dir":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/event",
 
-  "solver_gpu":[0],
+  "solver_gpu":[3],
   "solver_config":{
     "clip_norm":100,
     "log_interval":10,
@@ -16,7 +16,7 @@
   "num_classes": null,
   "pretrained_model": null,
   "model_config":{
-    "model":"speech_transformer",
+    "model":"speech_transformer3",
     "model_config":{
       "return_encoder_output":true,
       "num_filters":512,
@@ -38,7 +38,7 @@
     "ctc_weight":0.5,
     "lm_type":"ngram",
     "lm_weight":0.3,
-    "lm_path":"examples/asr/hkust/data/5gram.arpa"
+    "lm_path":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/5gram.arpa"
   },
 
   "optimizer":"warmup_adam",
@@ -52,24 +52,24 @@
   "dataset_builder": "speech_recognition_dataset",
   "num_data_threads": 1,
   "trainset_config":{
-    "data_csv": "examples/asr/hkust/data/train.csv",
+    "data_csv": "/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/train.csv",
     "audio_config":{"type":"Fbank", "filterbank_channel_count":40},
-    "cmvn_file":"examples/asr/hkust/data/cmvn",
-    "text_config": {"type":"vocab", "model":"examples/asr/hkust/data/vocab"},
+    "cmvn_file":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/cmvn",
+    "text_config": {"type":"vocab", "model":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/vocab"},
     "speed_permutation": [0.9, 1.0, 1.1],
     "input_length_range":[10, 8000]
   },
   "devset_config":{
-    "data_csv": "examples/asr/hkust/data/dev.csv",
+    "data_csv": "/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/dev.csv",
     "audio_config":{"type":"Fbank", "filterbank_channel_count":40},
-    "cmvn_file":"examples/asr/hkust/data/cmvn",
-    "text_config": {"type":"vocab", "model":"examples/asr/hkust/data/vocab"},
+    "cmvn_file":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/cmvn",
+    "text_config": {"type":"vocab", "model":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/vocab"},
     "input_length_range":[10, 8000]
   },
   "testset_config":{
-    "data_csv": "examples/asr/hkust/data/dev.csv",
+    "data_csv": "/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/dev.csv",
     "audio_config":{"type":"Fbank", "filterbank_channel_count":40},
-    "cmvn_file":"examples/asr/hkust/data/cmvn",
-    "text_config": {"type":"vocab", "model":"examples/asr/hkust/data/vocab"}
+    "cmvn_file":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/cmvn",
+    "text_config": {"type":"vocab", "model":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/data/vocab"}
   }
 }

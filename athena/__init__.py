@@ -41,7 +41,7 @@ from .layers.transformer import TransformerDecoderLayer
 
 # models
 from .models.base import BaseModel
-from .models.speech_transformer import SpeechTransformer, SpeechTransformer2
+from .models.speech_transformer import SpeechTransformer, SpeechTransformer2, SpeechTransformer3
 from .models.masked_pc import MaskedPredictCoding
 from .models.deep_speech import DeepSpeechModel
 from .models.mtl_seq2seq import MtlTransformerCtc

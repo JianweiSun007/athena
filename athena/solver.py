@@ -81,7 +81,7 @@ class BaseSolver(tf.keras.Model):
         train_step = self.train_step
         if self.hparams.enable_tf_function:
             logging.info("please be patient, enable tf.function, it takes time ...")
-            train_step = tf.function(train_step, input_signature=self.sample_signature)
+            #train_step = tf.function(train_step, input_signature=self.sample_signature)
         for batch, samples in enumerate(dataset.take(total_batches)):
             # train 1 step
             samples = self.model.prepare_samples(samples)

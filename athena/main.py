@@ -33,6 +33,7 @@ SUPPORTED_MODEL = {
     "deep_speech": DeepSpeechModel,
     "speech_transformer": SpeechTransformer,
     "speech_transformer2": SpeechTransformer2,
+    "speech_transformer3": SpeechTransformer3,
     "mtl_transformer_ctc": MtlTransformerCtc,
     "mpc": MaskedPredictCoding,
     "rnnlm": RNNLM,
