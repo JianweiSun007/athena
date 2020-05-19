@@ -1,19 +1,24 @@
 #!/bin/bash
-conda_dir=$1
-site_packages_dir=$2
-work_dir=`pwd`
-
-if [ $# -ne 1 ]; then
-  echo $#
-  echo "usage: sh $0 conda_dir site_packages_dir"  
-  echo "eg: sh $0 ~/anaconda ~/anaconda/lib/python3.6/site-packages"
+function version_lt() { test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" != "$1"; }
+python_dir=`which python`
+python_vision=`python --version 2>&1`
+python_vision=${python_vision#* }
+if version_lt $python_vision 3.6 ;then
+  echo Your python vision should be equal or greater than 3.6.9.
+  echo We suggest you install Anaconda: https://www.anaconda.com/products/individual#linux
+  echo and run '"sh build_horovod_centos_env.sh"' again.
   exit
 fi
+python_dir=${python_dir%/*}
+site_packages_dir=`python -m site --user-site`
+work_dir=`pwd`
+echo $python_dir
+echo $site_packages_dir
+
 if [ -f horovod.env ];then
   echo You have build horovod env. If you want to rebuild it, you should '"' rm horovod.env'"' at first.
   exit
 fi
-function version_lt() { test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" != "$1"; }
 
 function build_gcc_env()
 {
@@ -69,7 +74,7 @@ function build_horovod_env()
 
 function gen_horovod_env_file()
 {
-  echo "export PATH=$conda_dir/bin:\$PATH">>horovod.env
+  echo "export PATH=$python_dir:\$PATH">>horovod.env
   echo "export PATH=$work_dir/openmpi-4.0.2/bin:\$PATH">>horovod.env
   echo "export LD_LIBRARY_PATH=$work_dir/openmpi-4.0.2/lib:\$LD_LIBRARY_PATH">>horovod.env
   echo "export PATH=$horovod_bin_dir:\$PATH">>horovod.env
