@@ -49,7 +49,7 @@ from .models.rnn_lm import RNNLM
 from .models.translate_transformer import NeuralTranslateTransformer
 
 # solver & loss & accuracy
-from .solver import BaseSolver
+from .solver import BaseSolver, BaseSolverSummary
 from .solver import DecoderSolver
 from .loss import CTCLoss
 from .loss import Seq2SeqSparseCategoricalCrossentropy

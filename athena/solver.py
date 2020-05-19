@@ -86,6 +86,8 @@ class BaseSolver(tf.keras.Model):
             # train 1 step
             samples = self.model.prepare_samples(samples)
             loss, metrics = train_step(samples)
+            with self.summary_writer.as_default():
+                tf.summary.trace_export(name="model_trace", step=0, profiler_outdir=self.p.summary_dir + 'log')
             if batch % self.hparams.log_interval == 0:
                 logging.info(self.metric_checker(loss, metrics))
                 self.model.reset_metrics()
@@ -115,8 +117,98 @@ class BaseSolver(tf.keras.Model):
         self.model.reset_metrics()
         return loss_metric.result()
 
+class BaseSolverSummary(tf.keras.Model):
+    """Base Solver.
+    """
+    default_config = {
+        "clip_norm": 100.0,
+        "log_interval": 10,
+        "enable_tf_function": True
+    }
+    def __init__(self, model, optimizer, sample_signature, config=None, **kwargs):
+        super().__init__(**kwargs)
+        self.model = model
+        self.optimizer = optimizer
+        self.metric_checker = MetricChecker(self.optimizer)
+        self.sample_signature = sample_signature
+        self.hparams = register_and_parse_hparams(self.default_config, config, cls=self.__class__)
 
+    @staticmethod
+    def initialize_devices(visible_gpu_idx=None):
+        """ initialize hvd devices, should be called firstly """
+        gpus = tf.config.experimental.list_physical_devices("GPU")
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        # means we're running in GPU mode
+        if len(gpus) != 0:
+            assert len(gpus) >= len(visible_gpu_idx)
+            for idx in visible_gpu_idx:
+                tf.config.experimental.set_visible_devices(gpus[idx], "GPU")
 
+    @staticmethod
+    def clip_by_norm(grads, norm):
+        """ clip norm using tf.clip_by_norm """
+        if norm <= 0:
+            return grads
+        grads = [
+            None if gradient is None else tf.clip_by_norm(gradient, norm)
+            for gradient in grads
+        ]
+        return grads
+
+    def train_step(self, samples):
+        """ train the model 1 step """
+        with tf.GradientTape() as tape:
+            logits = self.model(samples, training=True)
+            loss, metrics = self.model.get_loss(logits, samples, training=True)
+        grads = tape.gradient(loss, self.model.trainable_variables)
+        grads = self.clip_by_norm(grads, self.hparams.clip_norm)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+        return loss, metrics
+
+    def train(self, dataset, total_batches=-1):
+        """ Update the model in 1 epoch """
+        train_step = self.train_step
+        if self.hparams.enable_tf_function:
+            logging.info("please be patient, enable tf.function, it takes time ...")
+            train_step = tf.function(train_step, input_signature=self.sample_signature)
+        #tf.summary.trace_on(graph=True, profiler=True)  # 开启Trace，可以记录图结构和profile信息
+        for batch, samples in enumerate(dataset.take(total_batches)):
+            # train 1 step
+            samples = self.model.prepare_samples(samples)
+            loss, metrics = train_step(samples)
+            tf.summary.trace_export(name="model_trace", step=batch, profiler_outdir=self.summary_dir)
+            if batch % self.hparams.log_interval == 0:
+                logging.info(self.metric_checker(loss, metrics))
+                self.model.reset_metrics()
+
+    def evaluate_step(self, samples):
+        """ evaluate the model 1 step """
+        logits = self.model(samples, training=False)
+        loss, metrics = self.model.get_loss(logits, samples, training=False)
+        return loss, metrics
+
+    def evaluate(self, dataset, epoch):
+        """ evaluate the model """
+        loss_metric = tf.keras.metrics.Mean(name="AverageLoss")
+        loss, metrics = None, None
+        evaluate_step = self.evaluate_step
+        if self.hparams.enable_tf_function:
+            logging.info("please be patient, enable tf.function, it takes time ...")
+            evaluate_step = tf.function(evaluate_step, input_signature=self.sample_signature)
+        self.model.reset_metrics()  # init metric.result() with 0
+        for batch, samples in enumerate(dataset):
+            samples = self.model.prepare_samples(samples)
+            loss, metrics = evaluate_step(samples)
+            if batch % self.hparams.log_interval == 0:
+                logging.info(self.metric_checker(loss, metrics, -2))
+            loss_metric.update_state(loss)
+        logging.info(self.metric_checker(loss_metric.result(), metrics, evaluate_epoch=epoch))
+        self.model.reset_metrics()
+        return loss_metric.result()
+    def summary(self, summary_dir):
+        self.summary_dir = summary_dir
+        #self.summary_writer = tf.summary.create_file_writer(summary_dir + 'log')
 class DecoderSolver(BaseSolver):
     """ DecoderSolver
     """

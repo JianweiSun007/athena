@@ -594,11 +594,10 @@ class SpeechTransformer3(BaseModel):
             padding="same",
             use_bias=False,
             data_format="channels_last",
-        )(inner)
+        )(input_features)
 
         inner = layers.BatchNormalization()(inner)
         inner = tf.nn.relu6(inner)
-        '''
         inner = layers.Conv2D(
             filters=num_filters,
             kernel_size=(3, 3),
@@ -610,7 +609,6 @@ class SpeechTransformer3(BaseModel):
         inner = layers.BatchNormalization()(inner)
 
         inner = tf.nn.relu6(inner)
-        '''
         _, _, dim, channels = inner.get_shape().as_list()
         output_dim = dim * channels
         inner = layers.Reshape((-1, output_dim))(inner)
@@ -826,8 +824,8 @@ class GateConv(tf.keras.layers.Layer):
         return cnn_layer_out
 
 class ResLayer(tf.keras.layers.Layer):
-    def __init__(self,**kwargs):
-        super().__init__(**kwargs)
+    def __init__(self):
+        super().__init__()
         layers = tf.keras.layers
         self.gateconv32 = GateConv(filters=32)
         self.gateconv16 = GateConv(filters=16)

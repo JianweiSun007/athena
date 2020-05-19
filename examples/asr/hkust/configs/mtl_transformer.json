@@ -16,7 +16,7 @@
   "num_classes": null,
   "pretrained_model": null,
   "model_config":{
-    "model":"speech_transformer",
+    "model":"speech_transformer3",
     "model_config":{
       "return_encoder_output":true,
       "num_filters":512,
