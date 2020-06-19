@@ -5,18 +5,18 @@
   "ckpt":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/",
   "summary_dir":"/nfs/cold_project/sunjianwei/research/github-20200419/fork/athena/examples/asr/hkust/ckpts/mtl_transformer_ctc_sp/event",
 
-  "solver_gpu":[3],
+  "solver_gpu":[0],
   "solver_config":{
     "clip_norm":100,
     "log_interval":10,
-    "enable_tf_function":true
+    "enable_tf_function":false
   },
 
   "model":"mtl_transformer_ctc",
   "num_classes": null,
   "pretrained_model": null,
   "model_config":{
-    "model":"speech_transformer3",
+    "model":"speech_memory_transformer",
     "model_config":{
       "return_encoder_output":true,
       "num_filters":512,

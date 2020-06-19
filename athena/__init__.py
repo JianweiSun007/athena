@@ -34,6 +34,7 @@ from .layers.attention import BahdanauAttention
 from .layers.attention import HanAttention
 from .layers.attention import MatchAttention
 from .layers.transformer import Transformer
+from .layers.transformer import MemoryTransformer
 from .layers.transformer import TransformerEncoder
 from .layers.transformer import TransformerDecoder
 from .layers.transformer import TransformerEncoderLayer
@@ -41,7 +42,7 @@ from .layers.transformer import TransformerDecoderLayer
 
 # models
 from .models.base import BaseModel
-from .models.speech_transformer import SpeechTransformer, SpeechTransformer2, SpeechTransformer3
+from .models.speech_transformer import SpeechTransformer, SpeechTransformer2, SpeechTransformer3, SpeechMemoryTransformer
 from .models.masked_pc import MaskedPredictCoding
 from .models.deep_speech import DeepSpeechModel
 from .models.mtl_seq2seq import MtlTransformerCtc
@@ -64,7 +65,7 @@ from .utils.learning_rate import (
     ExponentialDecayAdam,
 )
 from .utils.hparam import HParams, register_and_parse_hparams
-from .utils.misc import generate_square_subsequent_mask
+from .utils.misc import generate_square_subsequent_mask, generate_memory_subsequent_mask
 from .utils.misc import get_wave_file_length
 from .utils.misc import set_default_summary_writer
 

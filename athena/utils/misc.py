@@ -64,6 +64,15 @@ def generate_square_subsequent_mask(size):
     mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
     return mask
 
+def generate_memory_subsequent_mask(size):
+    """  Generate a square mask for the sequence. The masked positions are filled with float(1.0).
+      Unmasked positions are filled with float(0.0).
+    """
+    mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
+    memory_mask = tf.linalg.band_part(tf.ones((size, size)), 0, 1)
+
+    return mask, memory_mask
+
 
 def validate_seqs(seqs, eos):
     """  Discard end symbol and elements after end symbol

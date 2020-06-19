@@ -22,7 +22,7 @@ def preprocess_sentence(w):
     w = w.rstrip().strip()
     return w
 
-def create_dataset(csv_file="examples/translate/spa-eng-examples/data/train.csv"):
+def create_dataset(csv_file="examples/translate/spa-eng-example/data/train.csv"):
     """ create and store in csv file """
     path_to_zip = tf.keras.utils.get_file('spa-eng.zip',
         origin='http://storage.googleapis.com/download.tensorflow.org/data/spa-eng.zip',
@@ -41,5 +41,4 @@ def create_dataset(csv_file="examples/translate/spa-eng-examples/data/train.csv"
 
 if __name__ == "__main__":
     logging.set_verbosity(logging.INFO)
-    CSV_FILE = sys.argv[1]
-    create_dataset(CSV_FILE)
+    create_dataset()

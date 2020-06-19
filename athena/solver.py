@@ -81,16 +81,26 @@ class BaseSolver(tf.keras.Model):
         train_step = self.train_step
         if self.hparams.enable_tf_function:
             logging.info("please be patient, enable tf.function, it takes time ...")
-            #train_step = tf.function(train_step, input_signature=self.sample_signature)
+            train_step = tf.function(train_step, input_signature=self.sample_signature)
+        train_start = time.time()
         for batch, samples in enumerate(dataset.take(total_batches)):
             # train 1 step
             samples = self.model.prepare_samples(samples)
+            step_time_start = time.time()
             loss, metrics = train_step(samples)
-            with self.summary_writer.as_default():
-                tf.summary.trace_export(name="model_trace", step=0, profiler_outdir=self.p.summary_dir + 'log')
+            #with self.summary_writer.as_default():
+            #    tf.summary.trace_export(name="model_trace", step=0, profiler_outdir=self.p.summary_dir + 'log')
             if batch % self.hparams.log_interval == 0:
                 logging.info(self.metric_checker(loss, metrics))
                 self.model.reset_metrics()
+            step_time_end = time.time()
+            train_end = time.time()
+            train_time = train_end - train_start
+            step_time = step_time_end - step_time_start
+            data_read_time = step_time_start - train_start
+            logging.info("train_time: "+str(train_time))
+            logging.info("step_time: " + str(step_time))
+            logging.info("data_read_time: "+str(data_read_time))
 
     def evaluate_step(self, samples):
         """ evaluate the model 1 step """
@@ -172,7 +182,6 @@ class BaseSolverSummary(tf.keras.Model):
         if self.hparams.enable_tf_function:
             logging.info("please be patient, enable tf.function, it takes time ...")
             train_step = tf.function(train_step, input_signature=self.sample_signature)
-        #tf.summary.trace_on(graph=True, profiler=True)  # 开启Trace，可以记录图结构和profile信息
         for batch, samples in enumerate(dataset.take(total_batches)):
             # train 1 step
             samples = self.model.prepare_samples(samples)

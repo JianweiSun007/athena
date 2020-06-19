@@ -34,6 +34,7 @@ SUPPORTED_MODEL = {
     "speech_transformer": SpeechTransformer,
     "speech_transformer2": SpeechTransformer2,
     "speech_transformer3": SpeechTransformer3,
+    "speech_memory_transformer": SpeechMemoryTransformer,
     "mtl_transformer_ctc": MtlTransformerCtc,
     "mpc": MaskedPredictCoding,
     "rnnlm": RNNLM,
