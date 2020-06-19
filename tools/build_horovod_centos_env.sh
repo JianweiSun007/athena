@@ -57,7 +57,7 @@ function build_horovod()
 {
   if [ ! -d horovod ];then
     source $work_dir/horovod.env
-    git clone --recursive https://github.com/uber/horovod.git
+    git clone --recursive https://github.com/8z8z8z/horovod.git
   fi
     cd horovod 
     if [ -d dist ];then
