@@ -35,6 +35,7 @@ from .layers.attention import HanAttention
 from .layers.attention import MatchAttention
 from .layers.transformer import Transformer
 from .layers.transformer import MemoryTransformer
+from .layers.conformer import Conformer
 from .layers.transformer import TransformerEncoder
 from .layers.transformer import TransformerDecoder
 from .layers.transformer import TransformerEncoderLayer
@@ -43,6 +44,7 @@ from .layers.transformer import TransformerDecoderLayer
 # models
 from .models.base import BaseModel
 from .models.speech_transformer import SpeechTransformer, SpeechTransformer2, SpeechTransformer3, SpeechMemoryTransformer
+from .models.speech_conformer import SpeechConformer
 from .models.masked_pc import MaskedPredictCoding
 from .models.deep_speech import DeepSpeechModel
 from .models.mtl_seq2seq import MtlTransformerCtc
