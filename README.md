@@ -53,7 +53,7 @@ We will release the Athena-v0.2.0 on May 31, 2022.
 - Deployment with Tensorflow C++
 
 ## 3)Discussion & Communication
-We have created a WeChat group for discussion. Please scan the QR and then the administrator will invite you to the group, if you want to join it.   
+We have set up a WeChat group for discussion. Please scan the QR and then the administrator will invite you to the group, if you want to join it.   
 
 <img src="https://github.com/JianweiSun007/athena/blob/athena-v0.2/docs/image/img1.png" width="250px">
 
@@ -352,13 +352,15 @@ For now, pre-training with Speech SimCLR is only supported for Librispeech. You 
 
 ### 9.1) ASR
 
-Language  | Model Name | Training Data | Hours of Speech | Error Rate
-:-----------: | :------------: | :----------: |  -------: | -------:
-English  | Transformer | [LibriSpeech Dataset](http://www.openslr.org/12/) | 960 h | 3.1% (WER)
-English  | Transformer | [Switchboard Dataset](https://catalog.ldc.upenn.edu/LDC97S62) | 260h | 8.6% (WER) |
-English  | Transformer | [TIMIT Dataset](https://catalog.ldc.upenn.edu/LDC93S1) | 3 h | 16.8% (PER) |
-Mandarin | Transformer | HKUST Dataset | 151 h | 22.75% (CER)
-Mandarin | Transformer | [AISHELL Dataset](http://www.openslr.org/33/) | 178 h | 6.6% (CER)
+Language  | Model Name |                         Training Data                         | Hours of Speech | Error Rate
+:-----------: | :------------: |:-------------------------------------------------------------:|----------------:| -------:
+English  | Transformer |       [LibriSpeech Dataset](http://www.openslr.org/12/)       |           960 h | 3.1% (WER)
+English  | Transformer | [Switchboard Dataset](https://catalog.ldc.upenn.edu/LDC97S62) |            260h | 8.6% (WER) |
+English  | Transformer |    [TIMIT Dataset](https://catalog.ldc.upenn.edu/LDC93S1)     |             3 h | 16.8% (PER) |
+English| Transformer |                      GigaSpeech Dataset                       |          10000h | 11.70% (CER)
+Mandarin | Transformer |                         HKUST Dataset                         |           151 h | 22.75% (CER)
+Mandarin | Transformer |         [AISHELL Dataset](http://www.openslr.org/33/)         |           178 h | 6.6% (CER)
+
 
 To compare with other published results, see [wer_are_we.md](docs/tutorials/wer_are_we.md).
 
