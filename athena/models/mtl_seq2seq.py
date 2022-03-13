@@ -17,18 +17,16 @@
 # Only support eager mode and TF>=2.0.0
 # pylint: disable=no-member, invalid-name, relative-beyond-top-level
 # pylint: disable=too-many-locals, too-many-statements, too-many-arguments, too-many-instance-attributes
-""" a implementation of deep speech 2 model can be used as a sample for ctc model """
+""" a implementation of multi-task model with attention and ctc loss """
 
+import io
 import tensorflow as tf
 from tensorflow.keras.layers import Dense
 from .base import BaseModel
 from ..loss import CTCLoss
 from ..metrics import CTCAccuracy
-from .speech_transformer import SpeechTransformer, SpeechTransformer2, SpeechTransformer3, SpeechMemoryTransformer
+from .speech_transformer import SpeechTransformer, SpeechTransformer2
 from ..utils.hparam import register_and_parse_hparams
-from ..tools.beam_search import BeamSearchDecoder
-from ..tools.ctc_scorer import CTCPrefixScorer
-from ..tools.lm_scorer import NGramScorer, RNNScorer
 
 
 class MtlTransformerCtc(BaseModel):
@@ -39,8 +37,6 @@ class MtlTransformerCtc(BaseModel):
     SUPPORTED_MODEL = {
         "speech_transformer": SpeechTransformer,
         "speech_transformer2": SpeechTransformer2,
-        "speech_transformer3": SpeechTransformer3,
-        "speech_memory_transformer": SpeechMemoryTransformer,
     }
 
     default_config = {
@@ -62,22 +58,40 @@ class MtlTransformerCtc(BaseModel):
         self.model = self.SUPPORTED_MODEL[self.hparams.model](
             data_descriptions, self.hparams.model_config
         )
+        self.time_propagate = self.model.time_propagate
         self.decoder = Dense(self.num_class)
-        self.ctc_logits = None
+
+        # for deployment
+        self.deploy_encoder = None
+        self.deploy_decoder = None
+
+        # for WFST
+        self.vocab = {}
+        if data_descriptions.hparams.text_config["type"] == "vocab":
+            for line in io.open(data_descriptions.hparams.text_config["model"], 'r', encoding='utf-8').readlines():
+                char, idx = line.strip().split()[0], line.strip().split()[1]
+                self.vocab[char] = int(idx)
+        # we need dict of words for WFST decoding
+        if data_descriptions.hparams.words is not None:
+            self.words = []
+            for line in io.open(data_descriptions.hparams.words, 'r', encoding='utf-8').readlines():
+                word = line.strip().split()[0]
+                self.words.append(word)
 
     def call(self, samples, training=None):
         """ call function in keras layers """
-        output, encoder_output = self.model(samples, training=training)
-        self.ctc_logits = self.decoder(encoder_output, training=training)
-        return output
+        attention_logits, encoder_output = self.model(samples, training=training)
+        ctc_logits = self.decoder(encoder_output, training=training)
+        return attention_logits, ctc_logits
 
-    def get_loss(self, logits, samples, training=None):
+    def get_loss(self, outputs, samples, training=None):
         """ get loss used for training """
+        attention_logits, ctc_logits = outputs
         logit_length = self.compute_logit_length(samples)
-        extra_loss = self.loss_function(self.ctc_logits, samples, logit_length)
-        self.metric(self.ctc_logits, samples, logit_length)
+        extra_loss = self.loss_function(ctc_logits, samples, logit_length)
+        self.metric(ctc_logits, samples, logit_length)
 
-        main_loss, metrics = self.model.get_loss(logits, samples, training=training)
+        main_loss, metrics = self.model.get_loss(attention_logits, samples, training=training)
         mtl_weight = self.hparams.mtl_weight
         loss = mtl_weight * main_loss + (1.0 - mtl_weight) * extra_loss
         metrics[self.metric.name] = self.metric.result()
@@ -95,14 +109,26 @@ class MtlTransformerCtc(BaseModel):
     def restore_from_pretrained_model(self, pretrained_model, model_type=""):
         """ A more general-purpose interface for pretrained model restoration
 
-	    :param pretrained_model: checkpoint path of mpc model
-	    :param model_type: the type of pretrained model to restore
+	    Args:
+	        pretrained_model: checkpoint path of mpc model
+	        model_type: the type of pretrained model to restore
 	    """
         self.model.restore_from_pretrained_model(pretrained_model, model_type)
 
-    def decode(self, samples, hparams, lm_model=None):
-        """ beam search decoding """
-        encoder_output, input_mask = self.model.decode(samples, hparams, return_encoder=True)
+    def decode(self, samples, hparams, decoder):
+        """
+        Initialization of the model for decoding,
+        decoder is called here to create predictions
+
+        Args:
+            samples: the data source to be decoded
+            hparams: decoding configs are included here
+            decoder: it contains the main decoding operations
+        Returns::
+
+            predictions: the corresponding decoding results
+        """
+        encoder_output, input_mask = self.model.decode(samples, hparams, decoder, return_encoder=True)
         # init op
         last_predictions = tf.ones([1], dtype=tf.int32) * self.sos
         history_predictions = tf.TensorArray(
@@ -112,39 +138,26 @@ class MtlTransformerCtc(BaseModel):
         history_predictions = history_predictions.stack()
         init_cand_states = [history_predictions]
         step = 0
-        beam_size = 1 if not hparams.beam_search else hparams.beam_size
-        beam_search_decoder = BeamSearchDecoder(
-            self.num_class, self.sos, self.eos, beam_size=beam_size
-        )
-        beam_search_decoder.build(self.model.time_propagate)
-        if hparams.beam_search and hparams.ctc_weight != 0:
-            ctc_scorer = CTCPrefixScorer(
-                self.eos,
-                ctc_beam=hparams.beam_size*2,
-                num_classes=self.num_class,
-                ctc_weight=hparams.ctc_weight,
-            )
+        if hparams.decoder_type == "beam_search_decoder" and hparams.ctc_weight != 0 and decoder.ctc_scorer is not None:
             ctc_logits = self.decoder(encoder_output, training=False)
             ctc_logits = tf.math.log(tf.nn.softmax(ctc_logits))
-            init_cand_states = ctc_scorer.initial_state(init_cand_states, ctc_logits)
-            beam_search_decoder.add_scorer(ctc_scorer)
-        if hparams.lm_weight != 0:
-            if hparams.lm_path is None:
-                raise ValueError("lm path should not be none")
-            if hparams.lm_type == "ngram":
-                lm_scorer = NGramScorer(
-                    hparams.lm_path,
-                    self.sos,
-                    self.eos,
-                    self.num_class,
-                    lm_weight=hparams.lm_weight,
-                )
-            elif hparams.lm_type == "rnn":
-                lm_scorer = RNNScorer(
-                    lm_model,
-                    lm_weight=hparams.lm_weight)
-            beam_search_decoder.add_scorer(lm_scorer)
-        predictions = beam_search_decoder(
-            history_predictions, init_cand_states, step, (encoder_output, input_mask)
-        )
+            init_cand_states = decoder.ctc_scorer.initial_state(init_cand_states, ctc_logits)
+        if hparams.decoder_type == "beam_search_decoder":
+            predictions = decoder(
+                history_predictions, init_cand_states, step, (encoder_output, input_mask)
+            )
+        elif hparams.decoder_type == "wfst_decoder":
+            initial_packed_states = (0,)  # this is basically decoding step
+            decoder.decode((encoder_output, input_mask), initial_packed_states, self.model.inference_one_step)
+            words_prediction_id = decoder.get_best_path()
+            words_prediction = ''.join([self.words[int(idx)] for idx in words_prediction_id])
+            predictions = [self.vocab[prediction] for prediction in words_prediction]
+            predictions = tf.constant([predictions])
+            predictions = tf.cast(predictions, tf.int64)
         return predictions
+
+    def deploy(self):
+        """ deployment function """
+        self.model.deploy()
+        self.deploy_encoder = self.model.deploy_encoder
+        self.deploy_decoder = self.model.deploy_decoder

@@ -16,14 +16,13 @@
 # pylint: disable=no-member, invalid-name
 """ audio dataset """
 from absl import logging
-import tqdm
 import tensorflow as tf
+import tqdm
 from ..text_featurizer import TextFeaturizer
-from ...utils.hparam import register_and_parse_hparams
 from .base import BaseDatasetBuilder
 
 class LanguageDatasetBuilder(BaseDatasetBuilder):
-    """ LanguageDatasetBuilder
+    """LanguageDatasetBuilder
     """
     default_config = {
         "input_text_config": None,
@@ -33,14 +32,13 @@ class LanguageDatasetBuilder(BaseDatasetBuilder):
         "data_csv": None
     }
     def __init__(self, config=None):
-        super().__init__()
-        self.hparams = register_and_parse_hparams(self.default_config, config, cls=self.__class__)
+        super().__init__(config=config)
         self.input_text_featurizer = TextFeaturizer(self.hparams.input_text_config)
         self.output_text_featurizer = TextFeaturizer(self.hparams.output_text_config)
         if self.hparams.data_csv is not None:
-            self.load_csv(self.hparams.data_csv)
+            self.preprocess_data(self.hparams.data_csv)
 
-    def load_csv(self, file_path):
+    def preprocess_data(self, file_path):
         """ load csv file """
         logging.info("Loading data from {}".format(file_path))
         with open(file_path, "r", encoding="utf-8") as file:
@@ -74,6 +72,21 @@ class LanguageDatasetBuilder(BaseDatasetBuilder):
         return self
 
     def __getitem__(self, index):
+        """get a sample
+
+        Args:
+            index (int): index of the entries
+
+        Returns:
+            dict: sample::
+
+            {
+                "input": input_labels,
+                "input_length": input_length,
+                "output": output_labels,
+                "output_length": output_length,
+            }
+        """
         input_labels, input_length, output_labels, output_length = self.entries[index]
 
         return {
@@ -83,22 +96,38 @@ class LanguageDatasetBuilder(BaseDatasetBuilder):
             "output_length": output_length,
         }
 
-    def __len__(self):
-        """ return the number of data samples """
-        return len(self.entries)
-
     @property
     def num_class(self):
-        """ return the max_index of the vocabulary """
+        """:obj:`@property`
+
+        Returns:
+            int: the max_index of the vocabulary
+        """
         return len(self.output_text_featurizer)
 
     @property
     def input_vocab_size(self):
-        """ return the input vocab size """
+        """:obj:`@property`
+
+        Returns:
+            int: the input vocab size
+        """
         return len(self.input_text_featurizer)
 
     @property
     def sample_type(self):
+        """:obj:`@property`
+
+        Returns:
+            dict: sample_type of the dataset::
+
+            {
+                "input": tf.int32,
+                "input_length": tf.int32,
+                "output": tf.int32,
+                "output_length": tf.int32,
+            }
+        """
         return {
             "input": tf.int32,
             "input_length": tf.int32,
@@ -108,6 +137,18 @@ class LanguageDatasetBuilder(BaseDatasetBuilder):
 
     @property
     def sample_shape(self):
+        """:obj:`@property`
+
+        Returns:
+            dict: sample_shape of the dataset::
+
+            {
+                "input": tf.TensorShape([None]),
+                "input_length": tf.TensorShape([]),
+                "output": tf.TensorShape([None]),
+                "output_length": tf.TensorShape([]),
+            }
+        """
         return {
             "input": tf.TensorShape([None]),
             "input_length": tf.TensorShape([]),
@@ -117,6 +158,18 @@ class LanguageDatasetBuilder(BaseDatasetBuilder):
 
     @property
     def sample_signature(self):
+        """:obj:`@property`
+
+        Returns:
+            dict: sample_signature of the dataset::
+
+            {
+                "input": tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                "input_length": tf.TensorSpec(shape=([None]), dtype=tf.int32),
+                "output": tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+                "output_length": tf.TensorSpec(shape=([None]), dtype=tf.int32),
+            }
+        """
         return (
             {
                 "input": tf.TensorSpec(shape=(None, None), dtype=tf.int32),

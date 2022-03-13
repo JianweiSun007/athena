@@ -4,8 +4,11 @@ yapf
 pylint
 flake8
 tqdm
-sentencepiece
+tensorflow-text==2.0.1
 librosa
 jieba
-pandas
+pandas<=0.25.1 
+kaldiio
+rarfile
+inflect
 https://github.com/kpu/kenlm/archive/master.zip

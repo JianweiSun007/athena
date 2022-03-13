@@ -24,7 +24,7 @@ source tools/env.sh
 
 stage=0
 stop_stage=100
-dataset_dir=/nfs/datasets/opensource_data/aishell
+dataset_dir=examples/asr/aishell/data/data_aishell
 workplace_dir=examples/asr/aishell_sub
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
@@ -41,7 +41,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     cat ${workplace_dir}/data/train.csv > ${workplace_dir}/data/all.csv
     tail -n +2 ${workplace_dir}/data/dev.csv >> ${workplace_dir}/data/all.csv
     tail -n +2 ${workplace_dir}/data/test.csv >> ${workplace_dir}/data/all.csv
-    python athena/cmvn_main.py \
+    CUDA_VISIBLE_DEVICES='' python athena/cmvn_main.py \
         ${workplace_dir}/configs/mpc.json ${workplace_dir}/data/all.csv || exit 1
 fi
 
@@ -71,6 +71,6 @@ fi
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     # decoding stage
     echo "Running decode ..."
-    python athena/decode_main.py \
+    python athena/inference.py \
         ${workplace_dir}/configs/mtl_transformer_sp.json || exit 1
 fi

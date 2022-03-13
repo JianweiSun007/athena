@@ -35,7 +35,7 @@ def insert_sos_in_labels(labels, sos):
 
 
 def remove_eos_in_labels(input_labels, labels_length):
-    """ remove eos in labels, batch size should be larger than 1
+    """remove eos in labels, batch size should be larger than 1
     assuming 0 as the padding and the last one is the eos
     """
     labels = input_labels[:, :-1]
@@ -48,7 +48,7 @@ def remove_eos_in_labels(input_labels, labels_length):
 
 
 def insert_eos_in_labels(input_labels, eos, labels_length):
-    """ insert eos in labels, batch size should be larger than 1
+    """insert eos in labels, batch size should be larger than 1
     assuming 0 as the padding,
     """
     zero = tf.zeros([tf.shape(input_labels)[0], 1], dtype=input_labels.dtype)
@@ -58,53 +58,82 @@ def insert_eos_in_labels(input_labels, eos, labels_length):
 
 
 def generate_square_subsequent_mask(size):
-    """  Generate a square mask for the sequence. The masked positions are filled with float(1.0).
-      Unmasked positions are filled with float(0.0).
+    """Generate a square mask for the sequence. The masked positions are filled with float(1.0).
+       Unmasked positions are filled with float(0.0).
     """
     mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
     return mask
 
-def generate_memory_subsequent_mask(size):
-    """  Generate a square mask for the sequence. The masked positions are filled with float(1.0).
-      Unmasked positions are filled with float(0.0).
-    """
-    mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
-    memory_mask = tf.linalg.band_part(tf.ones((size, size)), 0, 1)
 
-    return mask, memory_mask
+def create_multihead_mask(x, x_length, y, reverse=False):
+    """Generate a square mask for the sequence for mult-head attention.
+       The masked positions are filled with float(1.0).
+       Unmasked positions are filled with float(0.0).
+    """
+    x_mask, y_mask = None, None
+    if x is not None:
+        x_mask = 1.0 - tf.sequence_mask(
+            x_length, tf.shape(x)[1], dtype=tf.float32
+        )
+        x_mask = x_mask[:, tf.newaxis, tf.newaxis, :]
+        if reverse:
+            look_ahead_mask = generate_square_subsequent_mask(tf.shape(x)[1])
+            x_mask = tf.maximum(x_mask, look_ahead_mask)
+        x_mask.set_shape([None, None, None, None])
+    if y is not None:
+        y_mask = tf.cast(tf.math.equal(y, 0), tf.float32)
+        y_mask = y_mask[:, tf.newaxis, tf.newaxis, :]
+        if not reverse:
+            look_ahead_mask = generate_square_subsequent_mask(tf.shape(y)[1])
+            y_mask = tf.maximum(y_mask, look_ahead_mask)
+        y_mask.set_shape([None, None, None, None])
+    return x_mask, y_mask
+
+
+def gated_linear_layer(inputs, gates, name=None):
+    h1_glu = tf.keras.layers.multiply(inputs=[inputs, tf.sigmoid(gates)], name=name)
+    return h1_glu
 
 
 def validate_seqs(seqs, eos):
-    """  Discard end symbol and elements after end symbol
+    """Discard end symbol and elements after end symbol
+
     Args:
-      seqs: tf.Tensor shape=(batch_size, seq_length)
+        seqs: shape=(batch_size, seq_length)
+        eos: eos id
+
     Returns:
-      validated_preds: tf.SparseTensor
+        validated_preds: seqs without eos id
     """
     eos = tf.cast(eos, tf.int64)
-    if eos != 0:
-        indexes = tf.TensorArray(tf.bool, size=0, dynamic_size=True)
-        a = tf.not_equal(eos, seqs)
-        res = a[:, 0]
-        indexes = indexes.write(0, res)
-        for i in tf.range(1, tf.shape(a)[1]):
-            res = tf.logical_and(res, a[:, i])
-            indexes = indexes.write(i, res)
-        res = tf.transpose(indexes.stack(), [1, 0])
-        validated_preds = tf.where(tf.logical_not(res), tf.zeros_like(seqs), seqs)
-        validated_preds = tf.sparse.from_dense(validated_preds)
+    if tf.shape(seqs)[1] == 0:
+        validated_preds = tf.zeros([tf.shape(seqs)[0], 1], dtype=tf.int64)
     else:
-        validated_preds = tf.where(tf.equal(eos, seqs), tf.zeros_like(seqs), seqs)
-        validated_preds = tf.sparse.from_dense(validated_preds)
+        if eos != 0:
+            indexes = tf.TensorArray(tf.bool, size=0, dynamic_size=True)
+            a = tf.not_equal(eos, seqs)
+            res = a[:, 0]
+            indexes = indexes.write(0, res)
+            for i in tf.range(1, tf.shape(a)[1]):
+                res = tf.logical_and(res, a[:, i])
+                indexes = indexes.write(i, res)
+            res = tf.transpose(indexes.stack(), [1, 0])
+            validated_preds = tf.where(tf.logical_not(res), tf.zeros_like(seqs), seqs)
+        else:
+            validated_preds = tf.where(tf.equal(eos, seqs), tf.zeros_like(seqs), seqs)
+    validated_preds = tf.sparse.from_dense(validated_preds)
     counter = tf.cast(tf.shape(validated_preds.values)[0], tf.float32)
     return validated_preds, counter
 
 
 def get_wave_file_length(wave_file):
-    """  get the wave file length(duration) in ms
+    """get the wave file length(duration) in ms
 
-    :param wave_file: the path of wave file
-    :return: the length(ms) of the wave file
+    Args:
+        wave_file: the path of wave file
+
+    Returns:
+        wav_length: the length(ms) of the wave file
     """
     if not os.path.exists(wave_file):
         logging.warning("Wave file {} does not exist!".format(wave_file))
@@ -119,14 +148,16 @@ def get_wave_file_length(wave_file):
 def splice_numpy(x, context):
     """
     Splice a tensor along the last dimension with context.
-    e.g.:
-    t = [[[1, 2, 3],
-        [4, 5, 6],
-        [7, 8, 9]]]
-    splice_tensor(t, [0, 1]) =
-      [[[1, 2, 3, 4, 5, 6],
-        [4, 5, 6, 7, 8, 9],
-        [7, 8, 9, 7, 8, 9]]]
+    
+    Example:
+
+    >>> t = [[[1, 2, 3],
+    >>>     [4, 5, 6],
+    >>>     [7, 8, 9]]]
+    >>> splice_tensor(t, [0, 1]) =
+    >>>   [[[1, 2, 3, 4, 5, 6],
+    >>>     [4, 5, 6, 7, 8, 9],
+    >>>     [7, 8, 9, 7, 8, 9]]]
 
     Args:
         tensor: a tf.Tensor with shape (B, T, D) a.k.a. (N, H, W)
@@ -162,8 +193,8 @@ def set_default_summary_writer(summary_directory=None):
     writer.set_as_default()
 
 def tensor_shape(tensor):
-    """  Return a list with tensor shape. For each dimension,
-         use tensor.get_shape() first. If not available, use tf.shape().
+    """Return a list with tensor shape. For each dimension,
+       use tensor.get_shape() first. If not available, use tf.shape().
     """
     if tensor.get_shape().dims is None:
         return tf.shape(tensor)
@@ -174,3 +205,13 @@ def tensor_shape(tensor):
         else shape_value[idx]
         for idx in range(len(shape_value))]
     return ret
+
+def apply_label_smoothing(inputs, num_classes, smoothing_rate=0.1):
+    '''Applies label smoothing. See https://arxiv.org/abs/1512.00567.
+    Args:
+      inputs: A 3d tensor with shape of [N, T, V], where V is the number of vocabulary.
+      num_classes: Number of classes.
+      smoothing_rate: Smoothing rate.
+    ```
+    '''
+    return ((1.0 - smoothing_rate) * inputs) + (smoothing_rate / num_classes)

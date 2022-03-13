@@ -1,4 +1,4 @@
-# Copyright (C) 2017 Beijing Didi Infinity Technology and Development Co.,Ltd.
+# Copyright (C) ATHENA AUTHORS
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@ logging.info("x_ops*.so path:{}".format(path))
 gen_x_ops = tf.load_op_library(tf.resource_loader.get_path_to_datafile(so_lib_file))
 
 spectrum = gen_x_ops.spectrum
+mel_spectrum = gen_x_ops.mel_spectrum
 fbank = gen_x_ops.fbank
 delta_delta = gen_x_ops.delta_delta
 pitch = gen_x_ops.pitch

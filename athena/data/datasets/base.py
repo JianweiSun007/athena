@@ -17,13 +17,17 @@
 
 import math
 import random
+import os
 from absl import logging
 import tensorflow as tf
-
+from athena.transform import AudioFeaturizer
+from ..feature_normalizer import FeatureNormalizer
+from ...utils.hparam import register_and_parse_hparams
 from ...utils.data_queue import DataQueue
 
+
 def data_loader(dataset_builder, batch_size=16, num_threads=1):
-    """ dataloader
+    """data loader
     """
     num_samples = len(dataset_builder)
     if num_samples == 0:
@@ -31,7 +35,8 @@ def data_loader(dataset_builder, batch_size=16, num_threads=1):
 
     if num_threads == 1:
         def _gen_data():
-            """ multi thread loader """
+            """multi thread loader
+            """
             for i in range(num_samples):
                 yield dataset_builder[i]
     else:
@@ -44,7 +49,8 @@ def data_loader(dataset_builder, batch_size=16, num_threads=1):
             max_index=num_samples
         )
         def _gen_data():
-            """ multi thread loader """
+            """multi thread loader
+            """
             for _ in range(num_samples):
                 yield data_queue.get()
 
@@ -68,11 +74,25 @@ def data_loader(dataset_builder, batch_size=16, num_threads=1):
 
 
 class BaseDatasetBuilder:
-    """ base dataset """
+    """base dataset builder
+    """
+    default_config = {}
 
-    def __init__(self):
+    def __init__(self, config=None):
+        # hparams
+        self.hparams = register_and_parse_hparams(
+            self.default_config, config, cls=self.__class__)
+        logging.info("hparams: {}".format(self.hparams))
         self.entries = []
-        self.speakers = []
+
+    def reload_config(self, config):
+        """ reload the config """
+        if config is not None:
+            self.hparams.override_from_dict(config)
+
+    def preprocess_data(self, file_path):
+        """ loading data """
+        raise NotImplementedError
 
     def __getitem__(self, index):
         raise NotImplementedError
@@ -81,31 +101,31 @@ class BaseDatasetBuilder:
         return len(self.entries)
 
     @property
-    def entries_list(self):
-        """ return the entries list """
-        return self.entries
-
-    @property
     def sample_type(self):
-        """ example types """
+        """example types
+        """
         raise NotImplementedError
 
     @property
     def sample_shape(self):
-        """ examples shapes """
+        """examples shapes
+        """
         raise NotImplementedError
 
     @property
     def sample_signature(self):
-        """ examples signature """
+        """examples signature
+        """
         raise NotImplementedError
 
     def as_dataset(self, batch_size=16, num_threads=1):
-        """ return tf.data.Dataset object """
+        """return tf.data.Dataset object
+        """
         return data_loader(self, batch_size, num_threads)
 
     def shard(self, num_shards, index):
-        """ Creates a Dataset that includes only 1/num_shards of this dataset """
+        """creates a Dataset that includes only 1/num_shards of this dataset
+        """
         if index >= num_shards:
             raise ValueError("the index should smaller the num_shards")
         logging.info("Creates the sub-dataset which is the %d part of %d" % (index, num_shards))
@@ -125,13 +145,13 @@ class BaseDatasetBuilder:
         return entries in sorted file_size order. Otherwise, do batch_wise shuffling.
 
         Args:
-            batch_size: an integer for the batch size. default=64
+            batch_size (int, optional):  an integer for the batch size. Defaults to 64.
         """
         if len(self.entries) == 0:
             return self
         logging.info("perform batch_wise_shuffle with batch_size %d" % batch_size)
         max_buckets = int(math.floor(len(self.entries) / batch_size))
-        total_buckets = [i for i in range(max_buckets)]
+        total_buckets = list(range(max_buckets))
         random.shuffle(total_buckets)
         shuffled_entries = []
         for i in total_buckets:
@@ -140,7 +160,44 @@ class BaseDatasetBuilder:
         self.entries = shuffled_entries
         return self
 
-    # pylint: disable=unused-argument
     def compute_cmvn_if_necessary(self, is_necessary=True):
-        """ vitural interface """
+        """ compute cmvn file
+        """
+        return self
+
+
+class SpeechBaseDatasetBuilder(BaseDatasetBuilder):
+    """ speech base dataset """
+    default_config = {
+        "audio_config": {"type": "Fbank"},
+        "num_cmvn_workers": 1,
+        "cmvn_file": None,
+        "data_csv": None
+    }
+
+    def __init__(self, config=None):
+        super().__init__(config=config)
+        self.speakers = []
+        self.audio_featurizer = AudioFeaturizer(self.hparams.audio_config)
+        self.feature_normalizer = FeatureNormalizer(self.hparams.cmvn_file)
+
+    @property
+    def num_class(self):
+        """ return the number of classes """
+        raise NotImplementedError
+
+    def compute_cmvn_if_necessary(self, is_necessary=True):
+        """vitural interface
+        """
+        if not is_necessary:
+            return self
+        if os.path.exists(self.hparams.cmvn_file):
+            return self
+        feature_dim = self.audio_featurizer.dim * self.audio_featurizer.num_channels
+        with tf.device("/cpu:0"):
+            self.feature_normalizer.compute_cmvn(
+                self.entries, self.speakers, self.audio_featurizer, feature_dim,
+                self.hparams.num_cmvn_workers
+            )
+        self.feature_normalizer.save_cmvn(["speaker", "mean", "var"])
         return self

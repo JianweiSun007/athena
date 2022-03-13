@@ -1,4 +1,4 @@
-# Copyright (C) 2017 Beijing Didi Infinity Technology and Development Co.,Ltd.
+# Copyright (C) ATHENA AUTHORS
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,10 +26,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
 class SpectrumTest(tf.test.TestCase):
-    """
-    Pitch extraction test.
-    """
+    """Pitch extraction test."""
     def test_spectrum(self):
+        """Test Pitch using 16kHz && 8kHz wav."""
         wav_path_16k = str(
             Path(os.environ["MAIN_ROOT"]).joinpath("examples/sm1_cln.wav")
         )

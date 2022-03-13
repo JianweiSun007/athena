@@ -1,4 +1,4 @@
-# Copyright (C) 2017 Beijing Didi Infinity Technology and Development Co.,Ltd.
+# Copyright (C) ATHENA AUTHORS
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""The model tests OP of fbank. """
 
 import os
 from pathlib import Path
@@ -26,8 +27,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
 class FbankTest(tf.test.TestCase):
+    """Test OP of Fbank."""
     def test_fbank(self):
-        # 16kHz && 8kHz test
+        """Test Fbank using 16kHz && 8kHz wav."""
         wav_path_16k = str(
             Path(os.environ["MAIN_ROOT"]).joinpath("examples/sm1_cln.wav")
         )

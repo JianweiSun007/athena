@@ -16,68 +16,41 @@
 # pylint: disable=no-member, invalid-name
 """ audio dataset """
 
-import os
 from absl import logging
 import tensorflow as tf
-from athena.transform import AudioFeaturizer
-from ...utils.hparam import register_and_parse_hparams
+import kaldiio
 from ..text_featurizer import TextFeaturizer
-from ..feature_normalizer import FeatureNormalizer
-from .base import BaseDatasetBuilder
+from .base import SpeechBaseDatasetBuilder
+from .preprocess import SpecAugment
 
-
-class SpeechRecognitionDatasetBuilder(BaseDatasetBuilder):
-    """ SpeechRecognitionDatasetBuilder
-
-    Args:
-        for __init__(self, config=None)
-
-    Config::
-        audio_config: the config file for feature extractor, default={'type':'Fbank'}
-        vocab_file: the vocab file, default='data/utils/ch-en.vocab'
-
-    Interfaces::
-        __len__(self): return the number of data samples
-        num_class(self): return the max_index of the vocabulary + 1
-        @property:
-          sample_shape:
-            {"input": tf.TensorShape([None, self.audio_featurizer.dim,
-                                  self.audio_featurizer.num_channels]),
-             "input_length": tf.TensorShape([1]),
-             "output_length": tf.TensorShape([1]),
-             "output": tf.TensorShape([None])}
+class SpeechRecognitionDatasetBuilder(SpeechBaseDatasetBuilder):
+    """SpeechRecognitionDatasetBuilder
     """
     default_config = {
         "audio_config": {"type": "Fbank"},
         "text_config": {"type":"vocab", "model":"athena/utils/vocabs/ch-en.vocab"},
+        "num_cmvn_workers": 1,
         "cmvn_file": None,
         "remove_unk": True,
         "input_length_range": [20, 50000],
         "output_length_range": [1, 10000],
         "speed_permutation": [1.0],
-        "data_csv": None
+        "spectral_augmentation": None,
+        "data_csv": None,
+        "words": None
     }
 
     def __init__(self, config=None):
-        super().__init__()
-        # hparams
-        self.hparams = register_and_parse_hparams(
-            self.default_config, config, cls=self.__class__)
-        logging.info("hparams: {}".format(self.hparams))
-
-        self.audio_featurizer = AudioFeaturizer(self.hparams.audio_config)
-        self.feature_normalizer = FeatureNormalizer(self.hparams.cmvn_file)
+        super().__init__(config=config)
         self.text_featurizer = TextFeaturizer(self.hparams.text_config)
+        if self.hparams.spectral_augmentation is not None:
+            self.spectral_augmentation = SpecAugment(self.hparams.spectral_augmentation)
         if self.hparams.data_csv is not None:
-            self.load_csv(self.hparams.data_csv)
-
-    def reload_config(self, config):
-        """ reload the config """
-        if config is not None:
-            self.hparams.override_from_dict(config)
+            self.preprocess_data(self.hparams.data_csv)
 
     def preprocess_data(self, file_path):
-        """ Generate a list of tuples (wav_filename, wav_length_ms, transcript speaker)."""
+        """generate a list of tuples (wav_filename, wav_length_ms, transcript, speaker).
+        """
         logging.info("Loading data from {}".format(file_path))
         with open(file_path, "r", encoding="utf-8") as file:
             lines = file.read().splitlines()
@@ -120,19 +93,39 @@ class SpeechRecognitionDatasetBuilder(BaseDatasetBuilder):
             self.text_featurizer.load_model(all_transcripts)
 
         # apply some filter
-        self.filter_sample_by_unk()
-        self.filter_sample_by_input_length()
-        self.filter_sample_by_output_length()
+        unk = self.text_featurizer.unk_index
+        if self.hparams.remove_unk and unk != -1:
+            self.entries = list(filter(lambda x: unk not in
+                                self.text_featurizer.encode(x[2]), self.entries))
+        self.entries = list(filter(lambda x: int(x[1]) in
+                            range(self.hparams.input_length_range[0],
+                            self.hparams.input_length_range[1]), self.entries))
+        self.entries = list(filter(lambda x: len(x[2]) in
+                            range(self.hparams.output_length_range[0],
+                            self.hparams.output_length_range[1]), self.entries))
         return self
 
-    def load_csv(self, file_path):
-        """ load csv file """
-        return self.preprocess_data(file_path)
-
     def __getitem__(self, index):
+        """get a sample
+
+        Args:
+            index (int): index of the entries
+
+        Returns:
+            dict: sample::
+
+            {
+                "input": feat,
+                "input_length": feat_length,
+                "output_length": label_length,
+                "output": label,
+            }
+        """
         audio_data, _, transcripts, speed, speaker = self.entries[index]
         feat = self.audio_featurizer(audio_data, speed=speed)
         feat = self.feature_normalizer(feat, speaker)
+        if self.hparams.spectral_augmentation is not None:
+            feat = self.spectral_augmentation(feat)
         feat_length = feat.shape[0]
 
         label = self.text_featurizer.encode(transcripts)
@@ -144,27 +137,25 @@ class SpeechRecognitionDatasetBuilder(BaseDatasetBuilder):
             "output": label,
         }
 
-    def __len__(self):
-        """ return the number of data samples """
-        return len(self.entries)
-
     @property
     def num_class(self):
-        """ return the max_index of the vocabulary + 1"""
+        """ return the max_index of the vocabulary + 1 """
         return len(self.text_featurizer)
 
     @property
-    def speaker_list(self):
-        """ return the speaker list """
-        return self.speakers
-
-    @property
-    def audio_featurizer_func(self):
-        """ return the audio_featurizer function """
-        return self.audio_featurizer
-
-    @property
     def sample_type(self):
+        """:obj:`@property`
+
+        Returns:
+            dict: sample_type of the dataset::
+
+            {
+                "input": tf.float32,
+                "input_length": tf.int32,
+                "output_length": tf.int32,
+                "output": tf.int32,
+            }
+        """
         return {
             "input": tf.float32,
             "input_length": tf.int32,
@@ -174,6 +165,18 @@ class SpeechRecognitionDatasetBuilder(BaseDatasetBuilder):
 
     @property
     def sample_shape(self):
+        """:obj:`@property`
+
+        Returns:
+            dict: sample_shape of the dataset::
+
+            {
+                "input": tf.TensorShape([None, dim, nc]),
+                "input_length": tf.TensorShape([]),
+                "output_length": tf.TensorShape([]),
+                "output": tf.TensorShape([None]),
+            }
+        """
         dim = self.audio_featurizer.dim
         nc = self.audio_featurizer.num_channels
         return {
@@ -185,6 +188,18 @@ class SpeechRecognitionDatasetBuilder(BaseDatasetBuilder):
 
     @property
     def sample_signature(self):
+        """:obj:`@property`
+
+        Returns:
+            dict: sample_signature of the dataset::
+
+            {
+                "input": tf.TensorSpec(shape=(None, None, dim, nc), dtype=tf.float32),
+                "input_length": tf.TensorSpec(shape=(None), dtype=tf.int32),
+                "output_length": tf.TensorSpec(shape=(None), dtype=tf.int32),
+                "output": tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+            }
+        """
         dim = self.audio_featurizer.dim
         nc = self.audio_featurizer.num_channels
         return (
@@ -196,76 +211,133 @@ class SpeechRecognitionDatasetBuilder(BaseDatasetBuilder):
             },
         )
 
-    def filter_sample_by_unk(self):
-        """filter samples which contain unk
+
+class SpeechRecognitionDatasetBuilderGIGA(SpeechRecognitionDatasetBuilder):
+    """SpeechRecognitionDatasetBuilder
         """
-        if self.hparams.remove_unk is False:
-            return self
-        filter_entries = []
+    default_config = {
+        "audio_config": {"type": "Fbank"},
+        "text_config": {"type": "vocab", "model": "athena/utils/vocabs/ch-en.vocab"},
+        "num_cmvn_workers": 1,
+        "cmvn_file": None,
+        "remove_unk": True,
+        "input_length_range": [20, 50000],
+        "output_length_range": [1, 10000],
+        "speed_permutation": [1.0],
+        "spectral_augmentation": None,
+        "data_csv": None,
+        "words": None,
+        "wav_scp": "",
+        "seg_file": "",
+        "force_global_cmvn": False,
+        "sort_len": False,
+    }
+
+    def __init__(self, config=None):
+        super().__init__(config=config)
+        self.seg_wav = kaldiio.load_scp(self.hparams.wav_scp,
+                                        segments=self.hparams.seg_file)
+        if self.hparams.spectral_augmentation is not None:
+            self.spectral_aug = SpecAugment(self.hparams.spectral_augmentation)
+        else:
+            self.spectral_aug = None
+
+    def preprocess_data(self, file_path):
+        """generate a list of tuples (wav_filename, wav_length_ms, transcript, speaker).
+        """
+        logging.info("Loading data from {}".format(file_path))
+        with open(file_path, "r", encoding="utf-8") as file:
+            lines = file.read().splitlines()
+        headers = lines[0]
+        lines = lines[1:]
+        lines = [line.split("\t") for line in lines]
+        self.entries = [tuple(line) for line in lines]
+
+        # handling speakers
+        self.speakers = []
+
+        if "speaker" not in headers.split("\t"):
+            entries = self.entries
+            self.entries = []
+            for wav_filename, wav_len, transcripts in entries:
+                self.entries.append(
+                    tuple([wav_filename, wav_len, transcripts, "global"])
+                )
+            self.speakers.append("global")
+
+        else:
+            if self.hparams.force_global_cmvn:
+                entries = self.entries
+                self.entries = []
+                for wav_filename, wav_len, transcripts, _ in entries:
+                    self.entries.append(
+                        tuple([wav_filename, wav_len, transcripts, "global"])
+                    )
+                self.speakers.append('global')
+            else:
+                for _, _, _, speaker in self.entries:
+                    if speaker not in self.speakers:
+                        self.speakers.append(speaker)
+
+        # handling speed
+        entries = self.entries
+        self.entries = []
+        if len(self.hparams.speed_permutation) > 1:
+            logging.info("perform speed permutation")
+        for speed in self.hparams.speed_permutation:
+            for wav_filename, wav_len, transcripts, speaker in entries:
+                self.entries.append(
+                    tuple([wav_filename,
+                    float(wav_len) / float(speed), transcripts, speed, speaker
+                ]))
+        if self.hparams.sort_len:
+            # handling special case for text_featurizer
+            self.entries.sort(key=lambda item: float(item[1]))
+        if self.text_featurizer.model_type == "text":
+            _, _, all_transcripts, _, _ = zip(*self.entries)
+            self.text_featurizer.load_model(all_transcripts)
+
+        # apply some filter
         unk = self.text_featurizer.unk_index
-        if unk == -1:
-            return self
-        for items in self.entries:
-            if unk not in self.text_featurizer.encode(items[2]):
-                filter_entries.append(items)
-        self.entries = filter_entries
+        if self.hparams.remove_unk and unk != -1:
+            self.entries = list(filter(lambda x: unk not in
+                                self.text_featurizer.encode(x[2]), self.entries))
+        self.entries = list(filter(lambda x: int(x[1]) in
+                            range(self.hparams.input_length_range[0],
+                            self.hparams.input_length_range[1]), self.entries))
+        self.entries = list(filter(lambda x: len(x[2]) in
+                            range(self.hparams.output_length_range[0],
+                            self.hparams.output_length_range[1]), self.entries))
         return self
 
-    def filter_sample_by_input_length(self):
-        """filter samples by input length
-
-        The length of filterd samples will be in [min_length, max_length)
+    def __getitem__(self, index):
+        """get a sample
 
         Args:
-            self.hparams.input_length_range = [min_len, max_len]
-            min_len: the minimal length(ms)
-            max_len: the maximal length(ms)
-        returns:
-            entries: a filtered list of tuples
-            (wav_filename, wav_len, transcripts, speed, speaker)
+            index (int): index of the entries
+
+        Returns:
+            dict: sample::
+
+            {
+                "input": feat,
+                "input_length": feat_length,
+                "output_length": label_length,
+                "output": label,
+            }
         """
-        min_len = self.hparams.input_length_range[0]
-        max_len = self.hparams.input_length_range[1]
-        filter_entries = []
-        for items in self.entries:
-            if int(items[1]) in range(min_len, max_len):
-                filter_entries.append(items)
-        self.entries = filter_entries
-        return self
+        audio_data, _, transcripts, speed, speaker = self.entries[index]
+        feat = self.audio_featurizer(audio_data, speed=speed, seg_wav=self.seg_wav)
+        if self.hparams.spectral_augmentation is not None:
+            feat = self.spectral_aug(feat)
+        feat = self.feature_normalizer(feat, speaker)
+        feat_length = feat.shape[0]
 
-    def filter_sample_by_output_length(self):
-        """filter samples by output length
-
-        The length of filterd samples will be in [min_length, max_length)
-
-        Args:
-            self.hparams.output_length_range = [min_len, max_len]
-            min_len: the minimal length
-            max_len: the maximal length
-        returns:
-            entries: a filtered list of tuples
-            (wav_filename, wav_len, transcripts, speed, speaker)
-        """
-        min_len = self.hparams.output_length_range[0]
-        max_len = self.hparams.output_length_range[1]
-        filter_entries = []
-        for items in self.entries:
-            if len(items[2]) in range(min_len, max_len):
-                filter_entries.append(items)
-        self.entries = filter_entries
-        return self
-
-    def compute_cmvn_if_necessary(self, is_necessary=True):
-        """ compute cmvn file
-        """
-        if not is_necessary:
-            return self
-        if os.path.exists(self.hparams.cmvn_file):
-            return self
-        feature_dim = self.audio_featurizer.dim * self.audio_featurizer.num_channels
-        with tf.device("/cpu:0"):
-            self.feature_normalizer.compute_cmvn(
-                self.entries, self.speakers, self.audio_featurizer, feature_dim
-            )
-        self.feature_normalizer.save_cmvn()
-        return self
+        label = self.text_featurizer.encode(transcripts)
+        label_length = len(label)
+        return {
+            "input": feat,
+            "input_length": feat_length,
+            "output_length": label_length,
+            "output": label,
+        }

@@ -1,4 +1,4 @@
-/* Copyright (C) 2017 Beijing Didi Infinity Technology and Development Co.,Ltd.
+/* Copyright (C) ATHENA AUTHORS
 All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,7 +93,7 @@ int Spectrum::proc_spc(const float* mic_buf, int input_size) {
   int n, k;
 
   if (input_size < i_WinLen)
-    std::cerr<<"Wraning: The length of input data is shorter than "<< window_length_sec_ << " s." <<std::endl;
+    std::cerr<<"Warning: The length of input data is shorter than "<< window_length_sec_ << " s." <<std::endl;
 
   //malloc
   pf_WINDOW = static_cast<float*>(malloc(sizeof(float) * i_WinLen));
@@ -169,6 +169,10 @@ int Spectrum::proc_spc(const float* mic_buf, int input_size) {
     } else if (i_OutTyp == 2) {
       for (k = 0; k < i_NumFrq; k++) {
         pf_SPC[n * i_NumFrq + k] = log(complex_abs2(fftwin[k]));
+      }
+    } else if (i_OutTyp == 3) {
+      for (k = 0; k < i_NumFrq; k++) {
+        pf_SPC[n * i_NumFrq + k] = sqrt(complex_abs2(fftwin[k]));
       }
     } else {
       return -1;

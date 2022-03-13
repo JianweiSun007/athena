@@ -16,7 +16,7 @@
 # ==============================================================================
 # Only support tensorflow 2.0
 # pylint: disable=invalid-name, no-member, wildcard-import, unused-wildcard-import, redefined-outer-name
-""" a sample implementation of LAS for HKUST """
+""" starting point for model training """
 import sys
 import json
 import tensorflow as tf
@@ -25,21 +25,30 @@ from athena import *
 
 SUPPORTED_DATASET_BUILDER = {
     "speech_recognition_dataset": SpeechRecognitionDatasetBuilder,
+    "speech_recognition_dataset_giga": SpeechRecognitionDatasetBuilderGIGA,
+    "speech_recognition_dataset_kaldiio": SpeechRecognitionDatasetKaldiIOBuilder,
+    "speech_synthesis_dataset": SpeechSynthesisDatasetBuilder,
     "speech_dataset": SpeechDatasetBuilder,
+    "speech_dataset_kaldiio": SpeechDatasetKaldiIOBuilder,
+    "speaker_recognition_dataset": SpeakerRecognitionDatasetBuilder,
+    "speaker_verification_dataset": SpeakerVerificationDatasetBuilder,
     "language_dataset": LanguageDatasetBuilder,
+    "voice_conversion_dataset": VoiceConversionDatasetBuilder
 }
 
 SUPPORTED_MODEL = {
     "deep_speech": DeepSpeechModel,
     "speech_transformer": SpeechTransformer,
     "speech_transformer2": SpeechTransformer2,
-    "speech_transformer3": SpeechTransformer3,
-    "speech_memory_transformer": SpeechMemoryTransformer,
     "mtl_transformer_ctc": MtlTransformerCtc,
-    "speech_conformer": SpeechConformer,
     "mpc": MaskedPredictCoding,
     "rnnlm": RNNLM,
     "translate_transformer": NeuralTranslateTransformer,
+    "tacotron2": Tacotron2,
+    "stargan" : StarganModel,
+    "tts_transformer": TTSTransformer,
+    "fastspeech": FastSpeech,
+    "speaker_resnet": SpeakerResnet
 }
 
 SUPPORTED_OPTIMIZER = {
@@ -53,20 +62,24 @@ DEFAULT_CONFIGS = {
     "sorta_epoch": 1,
     "ckpt": None,
     "summary_dir": None,
+    "solver_type": "asr",
     "solver_gpu": [0],
     "solver_config": None,
     "model": "speech_transformer",
     "num_classes": None,
     "model_config": None,
     "pretrained_model": None,
+    "teacher_model": None,
     "optimizer": "warmup_adam",
     "optimizer_config": None,
+    "convert_config": None,
     "num_data_threads": 1,
     "dataset_builder": "speech_recognition_dataset",
+    "dev_dataset_builder": None,
     "trainset_config": None,
     "devset_config": None,
     "testset_config": None,
-    "decode_config": None,
+    "inference_config": None
 }
 
 def parse_config(config):
@@ -75,14 +88,21 @@ def parse_config(config):
     logging.info("hparams: {}".format(p))
     return p
 
-def build_model_from_jsonfile(jsonfile, pre_run=True):
-    """ creates model using configurations in json, load from checkpoint
-    if previous models exist in checkpoint dir
+def parse_jsonfile(jsonfile):
+    """ parse the jsonfile, output the parameters
     """
     config = None
     with open(jsonfile) as file:
         config = json.load(file)
-    p = parse_config(config)
+    p = register_and_parse_hparams(DEFAULT_CONFIGS, config, cls="main")
+    logging.info("hparams: {}".format(p))
+    return p
+
+def build_model_from_jsonfile(jsonfile, pre_run=True):
+    """ creates model using configurations in json, load from checkpoint
+    if previous models exist in checkpoint dir
+    """
+    p = parse_jsonfile(jsonfile)
 
     dataset_builder = SUPPORTED_DATASET_BUILDER[p.dataset_builder](p.trainset_config)
     if p.trainset_config is None and p.num_classes is None:
@@ -111,7 +131,6 @@ def build_model_from_jsonfile(jsonfile, pre_run=True):
 
 def train(jsonfile, Solver, rank_size=1, rank=0):
     """ entry point for model training, implements train loop
-
 	:param jsonfile: json file to read configuration from
 	:param Solver: an abstract class that implements high-level logic of train, evaluate, decode, etc
 	:param rank_size: total number of workers, 1 if using single gpu
@@ -122,7 +141,9 @@ def train(jsonfile, Solver, rank_size=1, rank=0):
     if p.pretrained_model is not None and epoch == 0:
         p2, pretrained_model, _, _ = build_model_from_jsonfile(p.pretrained_model)
         model.restore_from_pretrained_model(pretrained_model, p2.model)
-
+    if p.teacher_model is not None:
+        p3, teacher_model, _, _ = build_model_from_jsonfile(p.teacher_model)
+        model.set_teacher_model(teacher_model, p3.model)
     if rank == 0:
         set_default_summary_writer(p.summary_dir)
 
@@ -131,14 +152,21 @@ def train(jsonfile, Solver, rank_size=1, rank=0):
     trainset_builder.compute_cmvn_if_necessary(rank == 0)
     trainset_builder.shard(rank_size, rank)
 
+    if p.dev_dataset_builder is not None:
+        devset_builder = p.dev_dataset_builder
+    else:
+        devset_builder = p.dataset_builder
+    devset_builder = SUPPORTED_DATASET_BUILDER[devset_builder](p.devset_config)
+
     # train
     solver = Solver(
         model,
         optimizer,
         sample_signature=trainset_builder.sample_signature,
+        eval_sample_signature=devset_builder.sample_signature,
         config=p.solver_config,
     )
-    loss = 0.0
+
     while epoch < p.num_epochs:
         if rank == 0:
             logging.info(">>>>> start training in epoch %d" % epoch)
@@ -146,15 +174,13 @@ def train(jsonfile, Solver, rank_size=1, rank=0):
             trainset_builder.batch_wise_shuffle(p.batch_size)
         solver.train(trainset_builder.as_dataset(p.batch_size, p.num_data_threads))
 
-        if p.devset_config is not None:
-            if rank == 0:
-                logging.info(">>>>> start evaluate in epoch %d" % epoch)
-            devset_builder = SUPPORTED_DATASET_BUILDER[p.dataset_builder](p.devset_config)
-            devset = devset_builder.as_dataset(p.batch_size, p.num_data_threads)
-            loss = solver.evaluate(devset, epoch)
+        if rank == 0:
+            logging.info(">>>>> start evaluate in epoch %d" % epoch)
+        devset = devset_builder.as_dataset(p.batch_size, p.num_data_threads)
+        loss, metrics = solver.evaluate(devset, epoch)
 
         if rank == 0:
-            checkpointer(loss)
+            checkpointer(loss, metrics)
 
         epoch = epoch + 1
 
@@ -166,10 +192,7 @@ if __name__ == "__main__":
         sys.exit()
     tf.random.set_seed(1)
 
-    json_file = sys.argv[1]
-    config = None
-    with open(json_file) as f:
-        config = json.load(f)
-    p = parse_config(config)
+    jsonfile = sys.argv[1]
+    p = parse_jsonfile(jsonfile)
     BaseSolver.initialize_devices(p.solver_gpu)
-    train(json_file, BaseSolver, 1, 0)
+    train(jsonfile, BaseSolver, 1, 0)

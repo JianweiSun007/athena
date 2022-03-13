@@ -47,7 +47,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     tail -n +2 $dataset_dir/dev-other.csv >> examples/asr/librispeech/data/all.csv
     tail -n +2 $dataset_dir/test-clean.csv >> examples/asr/librispeech/data/all.csv
     tail -n +2 $dataset_dir/test-other.csv >> examples/asr/librispeech/data/all.csv
-    python athena/cmvn_main.py \
+    CUDA_VISIBLE_DEVICES='' python athena/cmvn_main.py \
         examples/asr/librispeech/configs/mpc.json examples/asr/librispeech/data/all.csv || exit 1
 
     # create spm model
@@ -93,6 +93,6 @@ fi
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     # decoding stage
     echo "Running decode ..."
-    python athena/decode_main.py \
+    python athena/inference.py \
         examples/asr/librispeech/configs/mtl_transformer_sp.json || exit 1
 fi

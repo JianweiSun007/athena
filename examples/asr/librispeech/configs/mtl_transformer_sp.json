@@ -5,7 +5,7 @@
   "ckpt":"examples/asr/librispeech/ckpts/mtl_transformer_sp",
   "summary_dir":"examples/asr/librispeech/ckpts/mtl_transformer_sp/event",
 
-  "solver_gpu":[2],
+  "solver_gpu":[],
   "solver_config":{
     "clip_norm":5,
     "log_interval":10,
@@ -32,8 +32,9 @@
     "mtl_weight":0.3
   },
 
-  "decode_config":{
-    "beam_search":true,
+  "inference_config":{
+    "decoder_type":"beam_search_decoder",
+    "model_avg_num":10,
     "beam_size":10,
     "ctc_weight":0.5,
     "lm_type":"rnn",
@@ -57,6 +58,7 @@
     "cmvn_file":"examples/asr/librispeech/data/cmvn",
     "text_config": {"type":"spm", "model":"examples/asr/librispeech/data/librispeech_unigram5000.model"},
     "speed_permutation": [0.9, 1.0, 1.1],
+    "spectral_augmentation": {"time_warping":5, "time_masking":30, "frequency_masking":15, "mask_cols":2},
     "input_length_range":[10, 30000]
   },
   "devset_config":{

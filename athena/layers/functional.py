@@ -18,12 +18,12 @@
 
 import numpy as np
 import tensorflow as tf
-from ..utils.misc import tensor_shape
 from tensorflow.python.framework import ops
+from ..utils.misc import tensor_shape
 
 
 def make_positional_encoding(position, d_model):
-    """ generate a postional encoding list """
+    """generate a postional encoding list"""
 
     def get_angles(pos, i, d_model):
         angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
@@ -39,10 +39,10 @@ def make_positional_encoding(position, d_model):
 
 
 def collapse4d(x, name=None):
-    """ reshape from [N T D C] -> [N T D*C]
+    """reshape from [N T D C] -> [N T D*C]
     using tf.shape(x), which generate a tensor instead of x.shape
     """
-    with ops.name_scope(name, "collapse4d") as name:
+    with ops.name_scope(name, "collapse4d") as scope:
         shape = tensor_shape(x)
         N = shape[0]
         T = shape[1]
@@ -56,14 +56,16 @@ def collapse4d(x, name=None):
 def splice(x, context):
     """
     Splice a tensor along the last dimension with context.
-    e.g.:
-    t = [[[1, 2, 3],
-          [4, 5, 6],
-          [7, 8, 9]]]
-    splice_tensor(t, [0, 1]) =
-        [[[1, 2, 3, 4, 5, 6],
-        [4, 5, 6, 7, 8, 9],
-        [7, 8, 9, 7, 8, 9]]]
+
+    Example:
+
+    >>> t = [[[1, 2, 3],
+    >>>       [4, 5, 6],
+    >>>       [7, 8, 9]]]
+    >>> splice_tensor(t, [0, 1]) =
+    >>>     [[[1, 2, 3, 4, 5, 6],
+    >>>     [4, 5, 6, 7, 8, 9],
+    >>>     [7, 8, 9, 7, 8, 9]]]
 
     Args:
         tensor: a tf.Tensor with shape (B, T, D) a.k.a. (N, H, W)
@@ -100,6 +102,7 @@ def gelu(x):
     """Gaussian Error Linear Unit.
     This is a smoother version of the RELU.
     Original paper: https://arxiv.org/abs/1606.08415
+    
     Args:
         x: float Tensor to perform activation.
     Returns:
@@ -107,3 +110,18 @@ def gelu(x):
     """
     cdf = 0.5 * (1.0 + tf.tanh((np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
     return x * cdf
+
+
+def glu(x, axis=-1):
+    """Gated Linear Unit.
+
+    Original paper: https://arxiv.org/abs/1612.08083
+
+    Args:
+      x: float Tensor to perform activation.
+    Returns:
+      `x` with the GLU activation applied.
+    """
+    a, b = tf.split(x, 2, axis=axis)
+    b = tf.nn.sigmoid(b)
+    return tf.multiply(a, b)

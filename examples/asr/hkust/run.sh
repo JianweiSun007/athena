@@ -26,7 +26,7 @@ stage=0
 stop_stage=100
 horovod_cmd="horovodrun -np 4 -H localhost:4"
 horovod_prefix="horovod_"
-dataset_dir=/nfs/project/datasets/opensource_data/hkust
+dataset_dir=examples/asr/hkust/data/hkust
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     # prepare data
@@ -38,7 +38,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     # calculate cmvn
     cat examples/asr/hkust/data/train.csv > examples/asr/hkust/data/all.csv
     tail -n +2 examples/asr/hkust/data/dev.csv >> examples/asr/hkust/data/all.csv
-    python athena/cmvn_main.py \
+    CUDA_VISIBLE_DEVICES='' python athena/cmvn_main.py \
         examples/asr/hkust/configs/mpc.json examples/asr/hkust/data/all.csv || exit 1
 fi
 
@@ -69,7 +69,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
     tools/kenlm/build/bin/lmplz -o 5 < examples/asr/hkust/data/text.seg \
         > examples/asr/hkust/data/5gram.arpa || exit 1
 
-    python athena/decode_main.py \
+    python athena/inference.py \
         examples/asr/hkust/configs/mtl_transformer_sp.json || exit 1
 fi
 

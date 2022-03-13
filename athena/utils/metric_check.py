@@ -17,18 +17,17 @@
 """MetricChecker"""
 import time
 import tensorflow as tf
-import numpy as np
 
 
 class MetricChecker:
     """Hold and save best metric checkpoint
+    
     Args:
         name: MetricChecker name
         maximum: more greater more better
     """
 
     def __init__(self, optimizer):
-        self.best_loss = tf.constant(np.inf)
         self.optimizer = optimizer
         self.time_last_call = time.time()
         self.steps_last_call = 0
@@ -36,8 +35,7 @@ class MetricChecker:
     def __call__(self, loss, metrics, evaluate_epoch=-1):
         """summary the basic metrics like loss, lr
         Args:
-            loss:
-            matrics: average loss of all previous steps in one epoch
+            metrics: average loss of all previous steps in one epoch
                 if training is False, it must be provided
             evaluate_epoch:
                 if evaluate_epoch >= 0: <evaluate mode>
@@ -51,8 +49,7 @@ class MetricChecker:
         return self.summary_evaluate(loss, metrics, evaluate_epoch)
 
     def summary_train(self, loss, metrics):
-        """ generate summary of learning_rate, loss, metrics, speed and write on Tensorboard
-        """
+        """generate summary of learning_rate, loss, metrics, speed and write on Tensorboard"""
         global_steps = tf.convert_to_tensor(self.optimizer.iterations)
         learning_rate = (
             self.optimizer.lr
@@ -60,19 +57,28 @@ class MetricChecker:
             else (self.optimizer.lr(global_steps))
         )
 
-        tf.summary.scalar("loss", loss, step=global_steps)
+        total_loss = sum(list(loss.values())) if isinstance(loss, dict) else loss
+        tf.summary.scalar("total_loss", total_loss, step=global_steps)
+        if isinstance(loss, dict):
+            for name in loss:
+                tf.summary.scalar(name, loss[name], step=global_steps)
         tf.summary.scalar("learning_rate", learning_rate, step=global_steps)
-        for name in metrics:
-            metric = metrics[name]
-            tf.summary.scalar(name, metric, step=global_steps)
+        if metrics is not None:
+            for name in metrics:
+                metric = metrics[name]
+                tf.summary.scalar(name, metric, step=global_steps)
 
         reports = ""
         reports += "global_steps: %d\t" % (global_steps)
         reports += "learning_rate: %.4e\t" % (learning_rate)
-        reports += "loss: %.4f\t" % (loss)
-        for name in metrics:
-            metric = metrics[name]
-            reports += "%s: %.4f\t" % (name, metric)
+        reports += "loss: %.4f\t" % (total_loss)
+        if isinstance(loss, dict):
+            for name in loss:
+                reports += "%s: %.4f\t" % (name, loss[name])
+        if metrics is not None:
+            for name in metrics:
+                metric = metrics[name]
+                reports += "%s: %.4f\t" % (name, metric)
         right_now = time.time()
         duration = right_now - self.time_last_call
         self.time_last_call = right_now
@@ -87,18 +93,28 @@ class MetricChecker:
         return reports
 
     def summary_evaluate(self, loss, metrics, epoch=-1):
-        """ If epoch > 0, return a summary of loss and metrics on dev set and write on Tensorboard
+        """If epoch > 0, return a summary of loss and metrics on dev set and write on Tensorboard
         Otherwise, just return evaluate loss and metrics
         """
         reports = ""
+        global_steps = tf.convert_to_tensor(self.optimizer.iterations)
+        total_loss = sum(list(loss.values())) if isinstance(loss, dict) else loss
         if epoch >= 0:
-            tf.summary.scalar("evaluate_loss", loss, step=epoch)
+            tf.summary.scalar("evaluate_total_loss", total_loss, step=global_steps)
+            if isinstance(loss, dict):
+                for name in loss:
+                    tf.summary.scalar("evaluate_" + name, loss[name], step=global_steps)
+            if metrics is not None:
+                for name in metrics:
+                    metric = metrics[name]
+                    tf.summary.scalar("evaluate_" + name, metric, step=global_steps)
+            reports += "epoch: %d\t" % (epoch)
+        reports += "loss: %.4f\t" % (total_loss)
+        if isinstance(loss, dict):
+            for name in loss:
+                reports += "%s: %.4f\t" % (name, loss[name])
+        if metrics is not None:
             for name in metrics:
                 metric = metrics[name]
-                tf.summary.scalar("evaluate_" + name, metric, step=epoch)
-            reports += "epoch: %d\t" % (epoch)
-        reports += "loss: %.4f\t" % (loss)
-        for name in metrics:
-            metric = metrics[name]
-            reports += "%s: %.4f\t" % (name, metric)
+                reports += "%s: %.4f\t" % (name, metric)
         return reports
